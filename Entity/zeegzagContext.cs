@@ -1,4 +1,6 @@
-﻿using Microsoft.EntityFrameworkCore;
+﻿using System;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.EntityFrameworkCore.Metadata;
 
 namespace ZeegZag.Crawler2.Entity
 {
@@ -15,7 +17,8 @@ namespace ZeegZag.Crawler2.Entity
         }
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
-        {   modelBuilder.Entity<BorsaCurrencyT>(entity =>
+        {
+            modelBuilder.Entity<BorsaCurrencyT>(entity =>
             {
                 entity.ToTable("borsa_currency_t");
 
@@ -62,6 +65,12 @@ namespace ZeegZag.Crawler2.Entity
                 entity.Property(e => e.Volume24HourTo).HasColumnType("decimal(16,8)");
 
                 entity.Property(e => e.VolumeHour).HasColumnType("decimal(16,8)");
+
+                entity.Property(e => e.Volume).HasColumnType("decimal(16,8)");
+
+                entity.Property(e => e.VolumePeriod).HasColumnType("int(11)");
+
+                entity.Property(e => e.TxFee).HasColumnType("decimal(16,8)");
 
                 entity.HasOne(d => d.Borsa)
                     .WithMany(p => p.BorsaCurrencyT)
@@ -148,7 +157,7 @@ namespace ZeegZag.Crawler2.Entity
                     .HasForeignKey(d => d.BorsaCurrencyId)
                     .HasConstraintName("FK_history_bcid");
             });
-            
+
         }
     }
 }

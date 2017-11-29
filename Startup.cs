@@ -9,9 +9,12 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ZeegZag.Data.Entity;
+using ZeegZag.Crawler2.Entity;
+using ZeegZag.Crawler2.Services;
+using ZeegZag.Crawler2.Services.Database;
 
-namespace ZeegZag.Crawler22
+#pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
+namespace ZeegZag.Crawler2
 {
     public class Startup
     {
@@ -27,19 +30,18 @@ namespace ZeegZag.Crawler22
         {
             services.AddMvc();
 
-            services.AddDbContext<admin_zeegzagContext>(options =>
+            services.AddDbContext<zeegzagContext>(options =>
                 options.UseMySql(Configuration.GetConnectionString("DefaultConnection")));
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
         {
-            if (env.IsDevelopment())
-            {
-                app.UseDeveloperExceptionPage();
-            }
-
             app.UseMvcWithDefaultRoute();
+
+            ServiceManager.InitalizeServices(Configuration, 5000);
         }
     }
 }
+
+#pragma warning restore CS1591 // Missing XML comment for publicly visible type or member

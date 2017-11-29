@@ -27,6 +27,9 @@ namespace ZeegZag.Crawler2.Entity
         public decimal? VolumeHour { get; set; }
         public decimal? Volume24Hour { get; set; }
         public decimal? Volume24HourTo { get; set; }
+        public decimal? Volume { get; set; }
+        public int? VolumePeriod { get; set; }
+        public decimal? TxFee { get; set; }
 
         public BorsaT Borsa { get; set; }
         public CurrencyT FromCurrency { get; set; }

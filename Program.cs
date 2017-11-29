@@ -8,7 +8,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Logging;
 
-namespace ZeegZag.Crawler22
+namespace ZeegZag.Crawler2
 {
     public class Program
     {
@@ -20,6 +20,7 @@ namespace ZeegZag.Crawler22
         public static IWebHost BuildWebHost(string[] args) =>
             WebHost.CreateDefaultBuilder(args)
                 .UseStartup<Startup>()
+                .UseUrls("http://localhost:5104")
                 .Build();
     }
 }
