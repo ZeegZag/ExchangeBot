@@ -9,14 +9,20 @@ namespace ZeegZag.Crawler2.Services.Database
     public class PriceUpdaterJob : IDatabaseJob
     {
         private readonly int _bcId;
-        private readonly decimal _price;
-        private readonly decimal _volume;
-        private readonly int _volumePeriod;
-        private readonly decimal _volume24;
-        private readonly decimal _volume24To;
+        private decimal _price;
+        private decimal _volume;
+        private int _volumePeriod;
+        private decimal _volume24;
+        private decimal _volume24To;
         private bool updatePrice;
         private bool updateVolume;
         private bool updateVolume24;
+
+        public PriceUpdaterJob(
+            int bcId)
+        {
+            _bcId = bcId;
+        }
 
         //price only cons
         public PriceUpdaterJob(
@@ -61,6 +67,16 @@ namespace ZeegZag.Crawler2.Services.Database
             updatePrice = true;
             updateVolume = true;
             updateVolume24 = true;
+        }
+
+        public PriceUpdaterJob UpdateVolume(
+            decimal volume,
+            int volumePeriod)
+        {
+            _volume = volume;
+            _volumePeriod = volumePeriod;
+            updateVolume = true;
+            return this;
         }
         public void Execute(zeegzagContext db)
         {

@@ -27,6 +27,7 @@ namespace ZeegZag.Crawler2.Services
         protected const string PULLER_PRICE = "puller-price";
         protected const string PULLER_MARKETS = "puller-markets";
         protected const string PULLER_CURRENCY = "puller-currency";
+        protected const string PULLER_VOLUME = "puller-volume";
 
         protected Dictionary<string, Puller> Pullers = new Dictionary<string, Puller>();
         private int _exchangeId;
@@ -107,7 +108,18 @@ namespace ZeegZag.Crawler2.Services
             }
         }
 
-
+        public DateTime TimestampToDateTime(double unixTimeStamp)
+        {
+            // Unix timestamp is seconds past epoch
+            System.DateTime dtDateTime = new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc);
+            dtDateTime = dtDateTime.AddSeconds(unixTimeStamp).ToLocalTime();
+            return dtDateTime;
+        }
+        public static double DateTimeToTimestamp(DateTime dateTime)
+        {
+            return (TimeZoneInfo.ConvertTimeToUtc(dateTime) -
+                    new DateTime(1970, 1, 1, 0, 0, 0, 0, System.DateTimeKind.Utc)).TotalSeconds;
+        }
 
     }
 }
