@@ -26,11 +26,12 @@ namespace ZeegZag.Crawler2.Services.Poloniex
         public override void Init(zeegzagContext db)
         {
             GetExchangeId(db);
+            RegisterRateLimit(6);
 
-            CreatePuller(PULLER_CURRENCY, 60 * 60 * 6, true, OnPullingCurrencies); //pull new currencies every 6 hours            
-            CreatePuller(PULLER_MARKETS, 60 * 60, true, OnPullingMarkets); //pull markets every hour            
-            CreatePuller(PULLER_PRICE, 60, false, OnPullingPrices); //pull prices every minute
-            CreatePuller(PULLER_VOLUME, 60, false, OnPullingVolume); //pull volumes every minute
+            CreatePuller(PULLER_CURRENCY, 60 * 60, 0, OnPullingCurrencies); //pull new currencies every 6 hours            
+            CreatePuller(PULLER_MARKETS, 60 * 60, 45, OnPullingMarkets); //pull markets every hour            
+            CreatePuller(PULLER_PRICE, 60, 90, OnPullingPrices); //pull prices every minute
+            //CreatePuller(PULLER_VOLUME, 60, 90, OnPullingVolume); //pull volumes every minute
         }
 
         private async Task OnPullingPrices()
@@ -43,12 +44,15 @@ namespace ZeegZag.Crawler2.Services.Poloniex
                     .Select(bc => new
                     {
                         Id = bc.Id,
-                        From = bc.FromCurrency.ShortName,
-                        To = bc.ToCurrency.ShortName
+                        FromId = bc.FromCurrencyId,
+                        From = bc.FromCurrencyName,
+                        ToId = bc.ToCurrencyId,
+                        To = bc.ToCurrencyName,
+                        Price = bc.Price,
                     }).ToList();
 
 
-                var response = await Pull<JObject>(MarketPriceUrl);
+                var response = Pull<JObject>(MarketPriceUrl).Result;
                 foreach (var obj in response.Children<JProperty>())
                 {
                     var from_to = obj.Name.Split("_");
@@ -57,7 +61,12 @@ namespace ZeegZag.Crawler2.Services.Poloniex
                     var ticker = obj.Value.ToObject<PoloniexTicker>();
                     var borsaCurrency = prices.FirstOrDefault(bc => bc.From == from && bc.To == to);
                     if (borsaCurrency != null)
-                        DatabaseService.Enqueue(new PriceUpdaterJob(borsaCurrency.Id, Convert.ToDecimal(ticker.last), 0, 1, Convert.ToDecimal(ticker.baseVolume), Convert.ToDecimal(ticker.quoteVolume)));
+                    {
+                        DatabaseService.Enqueue(new PriceUpdaterJob(borsaCurrency.Id, Convert.ToDecimal(ticker.last), 0,
+                                1, Convert.ToDecimal(ticker.baseVolume), Convert.ToDecimal(ticker.quoteVolume))
+                            .UpdatePrice24Data(0, Convert.ToDecimal(ticker.high24hr), Convert.ToDecimal(ticker.low24hr), 0));
+                        DatabaseService.Enqueue(new UsdGeneratorJob(ExchangeId, borsaCurrency.FromId, borsaCurrency.ToId, borsaCurrency.Price));
+                    }
                 }
             }
         }
@@ -71,38 +80,41 @@ namespace ZeegZag.Crawler2.Services.Poloniex
                     .Select(bc => new
                     {
                         Id = bc.Id,
-                        From = bc.FromCurrency.ShortName,
-                        To = bc.ToCurrency.ShortName
+                        From = bc.FromCurrencyName,
+                        To = bc.ToCurrencyName
                     }).ToList();
-                int i = 0;
 
-                Parallel.ForEach(prices, bc =>
+                var tasks = new List<Task>(prices.Count);
+                foreach (var bc in prices)
                 {
-
-                    //request last minute and daily ticker
-                    var response =
-                        Pull<List<PoloniexChartData>>(string.Format(FiveMinVolumeUrl, bc.From, bc.To,
-                            DateTimeToTimestamp(DateTime.Now.AddMinutes(-5)))).Result;
-                    if (response.Count > 0)
+                    tasks.Add(Task.Factory.StartNew(() =>
                     {
 
-                        var data = response[0];
-                        DatabaseService.Enqueue(
-                            new PriceUpdaterJob(bc.Id).UpdateVolume(data.volume, 5));
-                    }
-                    else
-                    {
-                        Console.WriteLine(string.Format("Could not pull {0}-{1} volume from {2}: List was empty",
-                            bc.To, bc.From, Name));
-                    }
-                });
+                        //request last minute and daily ticker
+                        var response =
+                            Pull<List<PoloniexChartData>>(string.Format(FiveMinVolumeUrl, bc.From, bc.To,
+                                DateTimeToTimestamp(DateTime.Now.AddMinutes(-5)))).Result;
+                        if (response.Count > 0)
+                        {
+
+                            var data = response[0];
+                            DatabaseService.Enqueue(
+                                new PriceUpdaterJob(bc.Id).UpdateVolume(data.volume, 5));
+                        }
+                        else
+                        {
+                            Console.WriteLine(string.Format("Could not pull {0}-{1} volume from {2}: List was empty",
+                                bc.To, bc.From, Name));
+                        }
+                    }));
+                }
             }
             
         }
 
         private async Task OnPullingMarkets()
         {
-            var response = await Pull<JObject>(MarketPriceUrl);
+            var response = Pull<JObject>(MarketPriceUrl).Result;
 
             using (var db = DatabaseService.CreateContext())
             {
@@ -130,7 +142,7 @@ namespace ZeegZag.Crawler2.Services.Poloniex
 
         private async Task OnPullingCurrencies()
         {
-            var response = await Pull<JObject>(CurrencyUrl);
+            var response = Pull<JObject>(CurrencyUrl).Result;
             foreach (var obj in response.Children<JProperty>())
             {
                 var currencyName = obj.Name;

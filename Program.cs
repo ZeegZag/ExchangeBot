@@ -24,7 +24,7 @@ namespace ZeegZag.Crawler2
         public static IWebHost BuildWebHost(string[] args) =>
             WebHost.CreateDefaultBuilder(args)
                 .UseStartup<Startup>()
-                .UseUrls("http://localhost:5104")
+                //.UseUrls("http://localhost:5104")
                 .Build();
     }
 }

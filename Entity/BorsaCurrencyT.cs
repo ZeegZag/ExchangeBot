@@ -21,15 +21,18 @@ namespace ZeegZag.Crawler2.Entity
         public decimal? Open24Hour { get; set; }
         public decimal? High24Hour { get; set; }
         public decimal? Low24Hour { get; set; }
-        public decimal? OpenHour { get; set; }
-        public decimal? HighHour { get; set; }
-        public decimal? LowHour { get; set; }
-        public decimal? VolumeHour { get; set; }
+        public decimal? Close24Hour { get; set; }
+        public decimal? Open { get; set; }
+        public decimal? High { get; set; }
+        public decimal? Low { get; set; }
+        public decimal? Close { get; set; }
         public decimal? Volume24Hour { get; set; }
         public decimal? Volume24HourTo { get; set; }
         public decimal? Volume { get; set; }
         public int? VolumePeriod { get; set; }
         public decimal? TxFee { get; set; }
+        public string FromCurrencyName { get; set; }
+        public string ToCurrencyName { get; set; }
 
         public BorsaT Borsa { get; set; }
         public CurrencyT FromCurrency { get; set; }

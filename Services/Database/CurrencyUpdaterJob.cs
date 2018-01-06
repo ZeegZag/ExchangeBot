@@ -58,5 +58,10 @@ namespace ZeegZag.Crawler2.Services.Database
                 }
             }
         }
+
+        public override string ToString()
+        {
+            return "cu:" + _exchangeId;
+        }
     }
 }

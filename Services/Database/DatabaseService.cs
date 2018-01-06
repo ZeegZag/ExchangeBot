@@ -51,9 +51,12 @@ namespace ZeegZag.Crawler2.Services.Database
         }
         private static void OnTick(object sender, ElapsedEventArgs e)
         {
+            //if (!JobQueue.IsEmpty)
+                //Console.WriteLine("Saving...");
             _timer.Stop();
             try
             {
+                var  dt= DateTime.Now;
                 using (var db = CreateContext())
                 {
 
@@ -62,10 +65,16 @@ namespace ZeegZag.Crawler2.Services.Database
                     {
                         job.Execute(db);
                         i++;
+                        //Console.Write("..." + job.ToString());
                     }
+                    UsdGeneratorJob.ClearCache();
                     if (i > 0)
+                    {
                         db.SaveChanges();
+                       // Console.WriteLine(string.Format("Executed {0} jobs in {1}s", i, Math.Round((DateTime.Now - dt).TotalSeconds, 2)));
+                    }
                 }
+
             }
             catch (Exception exception)
             {

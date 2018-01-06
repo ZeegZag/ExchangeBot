@@ -16,5 +16,6 @@ namespace ZeegZag.Crawler2.Services.Database
         /// </summary>
         /// <param name="db"></param>
         void Execute(zeegzagContext db);
+        
     }
 }

@@ -7,6 +7,7 @@ namespace ZeegZag.Crawler2.Services
 {
     public class Puller : System.Timers.Timer
     {
+        public bool IsPulling { get; set; }
         public Puller()
         {
         }

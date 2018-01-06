@@ -44,17 +44,21 @@ namespace ZeegZag.Crawler2.Entity
 
                 entity.Property(e => e.High24Hour).HasColumnType("decimal(16,8)");
 
-                entity.Property(e => e.HighHour).HasColumnType("decimal(16,8)");
+                entity.Property(e => e.High).HasColumnType("decimal(16,8)");
 
                 entity.Property(e => e.LastUpdate).HasColumnType("datetime");
 
                 entity.Property(e => e.Low24Hour).HasColumnType("decimal(16,8)");
 
-                entity.Property(e => e.LowHour).HasColumnType("decimal(16,8)");
+                entity.Property(e => e.Low).HasColumnType("decimal(16,8)");
 
                 entity.Property(e => e.Open24Hour).HasColumnType("decimal(16,8)");
 
-                entity.Property(e => e.OpenHour).HasColumnType("decimal(16,8)");
+                entity.Property(e => e.Open).HasColumnType("decimal(16,8)");
+
+                entity.Property(e => e.Close24Hour).HasColumnType("decimal(16,8)");
+
+                entity.Property(e => e.Close).HasColumnType("decimal(16,8)");
 
                 entity.Property(e => e.Price).HasColumnType("decimal(16,8)");
 
@@ -64,13 +68,15 @@ namespace ZeegZag.Crawler2.Entity
 
                 entity.Property(e => e.Volume24HourTo).HasColumnType("decimal(16,8)");
 
-                entity.Property(e => e.VolumeHour).HasColumnType("decimal(16,8)");
-
                 entity.Property(e => e.Volume).HasColumnType("decimal(16,8)");
 
                 entity.Property(e => e.VolumePeriod).HasColumnType("int(11)");
 
                 entity.Property(e => e.TxFee).HasColumnType("decimal(16,8)");
+
+                entity.Property(e => e.FromCurrencyName).HasMaxLength(8);
+
+                entity.Property(e => e.ToCurrencyName).HasMaxLength(8);
 
                 entity.HasOne(d => d.Borsa)
                     .WithMany(p => p.BorsaCurrencyT)
@@ -140,9 +146,19 @@ namespace ZeegZag.Crawler2.Entity
 
                 entity.Property(e => e.High24Hour).HasColumnType("decimal(16,8)");
 
+                entity.Property(e => e.High).HasColumnType("decimal(16,8)");
+
                 entity.Property(e => e.Low24Hour).HasColumnType("decimal(16,8)");
 
+                entity.Property(e => e.Low).HasColumnType("decimal(16,8)");
+
                 entity.Property(e => e.Open24Hour).HasColumnType("decimal(16,8)");
+
+                entity.Property(e => e.Open).HasColumnType("decimal(16,8)");
+
+                entity.Property(e => e.Close24Hour).HasColumnType("decimal(16,8)");
+
+                entity.Property(e => e.Close).HasColumnType("decimal(16,8)");
 
                 entity.Property(e => e.Price).HasColumnType("decimal(16,8)");
 
@@ -150,7 +166,9 @@ namespace ZeegZag.Crawler2.Entity
 
                 entity.Property(e => e.Volume24HourTo).HasColumnType("decimal(16,8)");
 
-                entity.Property(e => e.VolumeHour).HasColumnType("decimal(16,8)");
+                entity.Property(e => e.Volume).HasColumnType("decimal(16,8)");
+
+                entity.Property(e => e.VolumePeriod).HasColumnType("int(11)");
 
                 entity.HasOne(d => d.BorsaCurrency)
                     .WithMany(p => p.HistoryT)

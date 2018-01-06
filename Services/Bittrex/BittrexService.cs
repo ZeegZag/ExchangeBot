@@ -1,4 +1,5 @@
 ﻿using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Timers;
@@ -25,10 +26,12 @@ namespace ZeegZag.Crawler2.Services.Bittrex
         public override void Init(zeegzagContext db)
         {
             GetExchangeId(db);
+            RegisterRateLimit(20);
+            AlignSockets(10);
             
-            CreatePuller(PULLER_CURRENCY, 60 * 60 * 6, true, OnPullingCurrencies); //pull new currencies every 6 hours            
-            CreatePuller(PULLER_MARKETS, 60 * 60, true, OnPullingMarkets); //pull markets every hour            
-            CreatePuller(PULLER_PRICE, 60, false, OnPullingPrices); //pull prices every minute
+            CreatePuller(PULLER_CURRENCY, 60 * 60, 0, OnPullingCurrencies); //pull new currencies every 6 hours            
+            CreatePuller(PULLER_MARKETS, 60 * 60, 45, OnPullingMarkets); //pull markets every hour            
+            CreatePuller(PULLER_PRICE, 60, 90, OnPullingPrices); //pull prices every minute
         }
 
         private async Task OnPullingPrices()
@@ -41,41 +44,51 @@ namespace ZeegZag.Crawler2.Services.Bittrex
                     .Select(bc => new
                     {
                         Id = bc.Id,
-                        From = bc.FromCurrency.ShortName,
-                        To = bc.ToCurrency.ShortName
+                        FromId = bc.FromCurrencyId,
+                        From = bc.FromCurrencyName,
+                        ToId = bc.ToCurrencyId,
+                        To = bc.ToCurrencyName,
+                        Price = bc.Price,
                     }).ToList();
                 int i = 0;
-                
-                Parallel.ForEach(prices, bc =>
+
+                var tasks = new List<Task>(prices.Count);
+                foreach (var bc in prices)
                 {
-
-                    //request last minute and daily ticker
-                    var responseMinuteTask =
-                        Pull<BittrexResponse<BittrexTicker>>(string.Format(MinutePriceUrl, bc.From, bc.To));
-                    var responseDailyTask = Pull<BittrexResponse<BittrexTicker>>(string.Format(DailyPriceUrl, bc.From, bc.To));
-                    Task.WaitAll(responseDailyTask, responseMinuteTask);
-
-                    var responseMinute = responseMinuteTask.Result;
-                    var responseDaily = responseDailyTask.Result;
-                    if (responseMinute.success && responseMinute.result.Count > 0)
+                    tasks.Add(Task.Factory.StartNew(() =>
                     {
-                        var data = responseMinute.result[0];
-                        var dataDaily = responseDaily.result[0];
-                        DatabaseService.Enqueue(
-                            new PriceUpdaterJob(bc.Id, data.C, data.V, 1, dataDaily.V, dataDaily.BV));
-                    }
-                    else
-                    {
-                        Console.WriteLine(string.Format("Could not pull {0}-{1} from {2}: {3}",
-                            bc.To, bc.From, Name, responseMinute.message));
-                    }
-                });
+                        //request last minute and daily ticker
+                        var responseMinute =
+                            Pull<BittrexResponse<BittrexTicker>>(string.Format(MinutePriceUrl, bc.From, bc.To)).Result;
+                        //var responseDaily = Pull<BittrexResponse<BittrexTicker>>(string.Format(DailyPriceUrl, bc.From, bc.To)).Result;
+                        
+                        if (responseMinute.success && responseMinute.result.Count > 0)
+                        {
+                            var data = responseMinute.result[0];
+                            //var dataDaily = responseDaily.result[0];
+                            if (data != null /*&& dataDaily != null*/)
+                            {
+                                DatabaseService.Enqueue(
+                                    new PriceUpdaterJob(bc.Id, data.C, data.V, 1, 0, 0)
+                                        .UpdatePriceData(data.O, data.H, data.L, data.C));
+                                        //.UpdatePrice24Data(dataDaily.O, dataDaily.H, dataDaily.L, dataDaily.C));
+                                DatabaseService.Enqueue(new UsdGeneratorJob(ExchangeId, bc.FromId, bc.ToId, bc.Price));
+                            }
+                        }
+                        else
+                        {
+                            Console.WriteLine(string.Format("Could not pull {0}-{1} from {2}: {3}",
+                                bc.To, bc.From, Name, responseMinute.message));
+                        }
+                    }));
+                }
+                Task.WaitAll(tasks.ToArray());
             }
         }
 
         private async Task OnPullingMarkets()
         {
-            var response = await Pull<BittrexResponse<BittrexMarketSummary>>(MarketUrl);
+            var response = Pull<BittrexResponse<BittrexMarketSummary>>(MarketUrl).Result;
             if (response.success)
             {
                 using (var db = DatabaseService.CreateContext())
@@ -107,7 +120,7 @@ namespace ZeegZag.Crawler2.Services.Bittrex
 
         private async Task OnPullingCurrencies()
         {
-            var response = await Pull<BittrexResponse<BittrexCurrency>>(CurrencyUrl);
+            var response = Pull<BittrexResponse<BittrexCurrency>>(CurrencyUrl).Result;
             if (response.success)
             {
                 foreach (var currency in response.result.Where(r => r.IsActive))
