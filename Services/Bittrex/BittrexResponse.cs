@@ -9,6 +9,6 @@ namespace ZeegZag.Crawler2.Services.Bittrex
     {
         public bool success { get; set; }
         public string message { get; set; }
-        public List<T> result { get; set; }
+        public T result { get; set; }
     }
 }

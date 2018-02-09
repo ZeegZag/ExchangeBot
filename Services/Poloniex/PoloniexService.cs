@@ -4,9 +4,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json.Linq;
-using ZeegZag.Crawler2.Entity;
 using ZeegZag.Crawler2.Services.Bittrex;
 using ZeegZag.Crawler2.Services.Database;
+using ZeegZag.Data.Entity;
 
 namespace ZeegZag.Crawler2.Services.Poloniex
 {
@@ -18,12 +18,14 @@ namespace ZeegZag.Crawler2.Services.Poloniex
         private const string CurrencyUrl = "https://poloniex.com/public?command=returnCurrencies";
         private const string MarketPriceUrl = "https://poloniex.com/public?command=returnTicker";
         private const string FiveMinVolumeUrl = "https://poloniex.com/public?command=returnChartData&currencyPair={0}_{1}&start={2}&end=9999999999&period=300";
+        private const string OrderUrl = "https://poloniex.com/public?command=returnOrderBook&currencyPair={0}_{1}&depth=10";
+        private const string HealthUrl = "https://poloniex.com/public?command=returnCurrencies";
 
         /// <inheritdoc />
         public override string Name { get; } = "Poloniex";
 
         /// <inheritdoc />
-        public override void Init(zeegzagContext db)
+        public override void Init(admin_zeegzagContext db)
         {
             GetExchangeId(db);
             RegisterRateLimit(6);
@@ -32,9 +34,10 @@ namespace ZeegZag.Crawler2.Services.Poloniex
             CreatePuller(PULLER_MARKETS, 60 * 60, 45, OnPullingMarkets); //pull markets every hour            
             CreatePuller(PULLER_PRICE, 60, 90, OnPullingPrices); //pull prices every minute
             //CreatePuller(PULLER_VOLUME, 60, 90, OnPullingVolume); //pull volumes every minute
+            CreatePuller(PULLER_ORDER, 60, 90, OnPullingOrders); //pull orders every minute
         }
 
-        private async Task OnPullingPrices()
+        private async Task OnPullingPrices(PullerSession session)
         {
             using (var db = DatabaseService.CreateContext())
             {
@@ -52,7 +55,8 @@ namespace ZeegZag.Crawler2.Services.Poloniex
                     }).ToList();
 
 
-                var response = Pull<JObject>(MarketPriceUrl).Result;
+                var response = Pull<JObject>(MarketPriceUrl, session);
+                var healths = Pull<JObject>(HealthUrl, session);
                 foreach (var obj in response.Children<JProperty>())
                 {
                     var from_to = obj.Name.Split("_");
@@ -62,15 +66,21 @@ namespace ZeegZag.Crawler2.Services.Poloniex
                     var borsaCurrency = prices.FirstOrDefault(bc => bc.From == from && bc.To == to);
                     if (borsaCurrency != null)
                     {
-                        DatabaseService.Enqueue(new PriceUpdaterJob(borsaCurrency.Id, Convert.ToDecimal(ticker.last), 0,
+                        var health = healths?.Children<JProperty>().FirstOrDefault(h => h.Name == borsaCurrency.To)?.Value.ToObject<PoloniexHealth>();
+
+                        var job = new PriceUpdaterJob(borsaCurrency.Id, Convert.ToDecimal(ticker.last), 0,
                                 1, Convert.ToDecimal(ticker.baseVolume), Convert.ToDecimal(ticker.quoteVolume))
-                            .UpdatePrice24Data(0, Convert.ToDecimal(ticker.high24hr), Convert.ToDecimal(ticker.low24hr), 0));
+                            .UpdatePrice24Data(0, Convert.ToDecimal(ticker.high24hr), Convert.ToDecimal(ticker.low24hr), 0);
+
+                        if (health != null)
+                            job.UpdateHealth(health.frozen == 0 && health.disabled == 0, health.frozen == 0 && health.disabled == 0);
+                        DatabaseService.Enqueue(job);
                         DatabaseService.Enqueue(new UsdGeneratorJob(ExchangeId, borsaCurrency.FromId, borsaCurrency.ToId, borsaCurrency.Price));
                     }
                 }
             }
         }
-        private async Task OnPullingVolume()
+        private async Task OnPullingOrders(PullerSession session)
         {
             using (var db = DatabaseService.CreateContext())
             {
@@ -80,41 +90,27 @@ namespace ZeegZag.Crawler2.Services.Poloniex
                     .Select(bc => new
                     {
                         Id = bc.Id,
+                        FromId = bc.FromCurrencyId,
                         From = bc.FromCurrencyName,
-                        To = bc.ToCurrencyName
+                        ToId = bc.ToCurrencyId,
+                        To = bc.ToCurrencyName,
+                        Price = bc.Price,
                     }).ToList();
 
-                var tasks = new List<Task>(prices.Count);
-                foreach (var bc in prices)
+                
+                ParallelFor(prices, bc =>
                 {
-                    tasks.Add(Task.Factory.StartNew(() =>
-                    {
-
-                        //request last minute and daily ticker
-                        var response =
-                            Pull<List<PoloniexChartData>>(string.Format(FiveMinVolumeUrl, bc.From, bc.To,
-                                DateTimeToTimestamp(DateTime.Now.AddMinutes(-5)))).Result;
-                        if (response.Count > 0)
-                        {
-
-                            var data = response[0];
-                            DatabaseService.Enqueue(
-                                new PriceUpdaterJob(bc.Id).UpdateVolume(data.volume, 5));
-                        }
-                        else
-                        {
-                            Console.WriteLine(string.Format("Could not pull {0}-{1} volume from {2}: List was empty",
-                                bc.To, bc.From, Name));
-                        }
-                    }));
-                }
+                    var responseOrders = Pull<PoloniexOrders>(string.Format(OrderUrl, bc.From, bc.To), session);
+                    DatabaseService.Enqueue(new OrderUpdaterJob(bc.Id)
+                        .UpdateBuy(responseOrders.bids, c => Convert.ToDecimal(c[0]), c => Convert.ToDecimal(c[1]))
+                        .UpdateSell(responseOrders.asks, c => Convert.ToDecimal(c[0]), c => Convert.ToDecimal(c[1])));
+                }).Wait();
             }
-            
         }
 
-        private async Task OnPullingMarkets()
+        private async Task OnPullingMarkets(PullerSession session)
         {
-            var response = Pull<JObject>(MarketPriceUrl).Result;
+            var response = Pull<JObject>(MarketPriceUrl, session);
 
             using (var db = DatabaseService.CreateContext())
             {
@@ -140,9 +136,9 @@ namespace ZeegZag.Crawler2.Services.Poloniex
             }
         }
 
-        private async Task OnPullingCurrencies()
+        private async Task OnPullingCurrencies(PullerSession session)
         {
-            var response = Pull<JObject>(CurrencyUrl).Result;
+            var response = Pull<JObject>(CurrencyUrl, session);
             foreach (var obj in response.Children<JProperty>())
             {
                 var currencyName = obj.Name;

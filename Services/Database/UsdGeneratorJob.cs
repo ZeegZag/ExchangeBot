@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
-using ZeegZag.Crawler2.Entity;
+using ZeegZag.Data.Entity;
 
 namespace ZeegZag.Crawler2.Services.Database
 {
@@ -24,7 +24,7 @@ namespace ZeegZag.Crawler2.Services.Database
                 BorsaId = exchangeId
             };
         }
-        public void Execute(zeegzagContext db)
+        public void Execute(admin_zeegzagContext db)
         {
             var usdtId = CachingService.CurrencyIdByName("USDT",
                 () => db.CurrencyT.FirstOrDefault(c => c.ShortName == "USDT")?.Id);
@@ -83,7 +83,19 @@ namespace ZeegZag.Crawler2.Services.Database
                     }
                     Cache[key] = generated;
                 }
+                else
+                {
+                    if (generated.LastUpdate.HasValue)
+                        db.HistoryT.Add(new HistoryT()
+                        {
+                            BorsaCurrencyId = generated.Id,
+                            EntryDate = generated.LastUpdate.Value,
+                            Price = generated.Price,
+
+                        });
+                }
             }
+
             generated.Price = price;
             generated.LastUpdate = DateTime.Now;
         }

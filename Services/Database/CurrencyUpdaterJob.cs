@@ -2,7 +2,9 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using ZeegZag.Crawler2.Entity;
+using Telegram.Bot.Types.InlineKeyboardButtons;
+using Telegram.Bot.Types.ReplyMarkups;
+using ZeegZag.Data.Entity;
 
 namespace ZeegZag.Crawler2.Services.Database
 {
@@ -14,11 +16,11 @@ namespace ZeegZag.Crawler2.Services.Database
         private readonly int _exchangeId;
         private readonly string _currencyShort;
         private readonly string _currencyLong;
-        private readonly bool _isActive;
+        private readonly bool? _isActive;
         private readonly decimal? _txFee;
 
         /// <inheritdoc />
-        public CurrencyUpdaterJob(int exchangeId, string currencyShort, string currencyLong, bool isActive, decimal? txFee)
+        public CurrencyUpdaterJob(int exchangeId, string currencyShort, string currencyLong, bool? isActive, decimal? txFee)
         {
             _exchangeId = exchangeId;
             _currencyShort = currencyShort.ToUpper();
@@ -28,7 +30,7 @@ namespace ZeegZag.Crawler2.Services.Database
         }
 
         /// <inheritdoc />
-        public void Execute(zeegzagContext db)
+        public void Execute(admin_zeegzagContext db)
         {
             var alias = ";" + _currencyShort + ";";
             var currencyId = CachingService.CurrencyIdByName(_currencyShort,
@@ -36,7 +38,7 @@ namespace ZeegZag.Crawler2.Services.Database
 
             if (!currencyId.HasValue)
             {
-                if (_isActive)
+                if (_isActive.GetValueOrDefault(true))
                 {
                     //add new coin (since we do not call savechanges() immediately, we do not have id yet. So txfee will be updated on next turn)
                     db.CurrencyT.Add(new CurrencyT()
@@ -44,6 +46,8 @@ namespace ZeegZag.Crawler2.Services.Database
                         Name = _currencyLong ?? _currencyShort,
                         ShortName = _currencyShort,
                     });
+                    DatabaseService.EnqueueBroadcast(437907950, $"New coin is added to ZeegZag: {_currencyShort}", 
+                        new InlineKeyboardMarkup(new InlineKeyboardButton[]{new InlineKeyboardUrlButton("Advertise here", "https://www.zeegzag.com"), }));
                 }
             }
             else
@@ -54,7 +58,8 @@ namespace ZeegZag.Crawler2.Services.Database
                 foreach (var bc in borsaCurrency)
                 {
                     bc.TxFee = _txFee;
-                    bc.Disabled = !_isActive;
+                    if (_isActive.HasValue)
+                        bc.Disabled = !_isActive.Value;
                 }
             }
         }

@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using ZeegZag.Crawler2.Entity;
+using ZeegZag.Data.Entity;
 
 namespace ZeegZag.Crawler2.Services.Database
 {
@@ -22,11 +22,15 @@ namespace ZeegZag.Crawler2.Services.Database
         private decimal _high24;
         private decimal _low24;
         private decimal _close24;
+        private bool _canDeposit;
+        private bool _canWithdraw;
         private bool updatePrice;
         private bool updateVolume;
         private bool updateVolume24;
         private bool updatePriceData;
         private bool updatePrice24Data;
+        private bool updateHealth;
+        private bool dontUpdateDate;
 
         public PriceUpdaterJob(
             int bcId)
@@ -124,34 +128,51 @@ namespace ZeegZag.Crawler2.Services.Database
             updateVolume24 = true;
             return this;
         }
-        public void Execute(zeegzagContext db)
+
+        public PriceUpdaterJob UpdateHealth(bool canDeposit, bool canWithdraw)
+        {
+            _canDeposit = canDeposit;
+            _canWithdraw = canWithdraw;
+            updateHealth = true;
+            return this;
+        }
+
+        public PriceUpdaterJob DontUpdateDate()
+        {
+            dontUpdateDate = true;
+            return this;
+        }
+        public void Execute(admin_zeegzagContext db)
         {
             var bc = db.BorsaCurrencyT.Find(_bcId);
 
             //save history
 
-            if (bc.LastUpdate.HasValue)
-                db.HistoryT.Add(new HistoryT()
-                {
-                    BorsaCurrencyId = bc.Id,
-                    EntryDate = bc.LastUpdate.Value,
-                    Price = bc.Price,
-                    High24Hour = bc.High24Hour,
-                    Low24Hour = bc.Low24Hour,
-                    Open24Hour = bc.Open24Hour,
-                    Close24Hour = bc.Close24Hour,
-                    Volume24Hour = bc.Volume24Hour,
-                    Volume24HourTo = bc.Volume24HourTo,
-                    Volume = bc.Volume,
-                    VolumePeriod = bc.VolumePeriod,
-                    Open = bc.Open,
-                    Close = bc.Close,
-                    High = bc.High,
-                    Low = bc.Low,
-                    
-                });
+            if (!dontUpdateDate)
+            {
+                if (bc.LastUpdate.HasValue)
+                    db.HistoryT.Add(new HistoryT()
+                    {
+                        BorsaCurrencyId = bc.Id,
+                        EntryDate = bc.LastUpdate.Value,
+                        Price = bc.Price,
+                        High24Hour = bc.High24Hour,
+                        Low24Hour = bc.Low24Hour,
+                        Open24Hour = bc.Open24Hour,
+                        Close24Hour = bc.Close24Hour,
+                        Volume24Hour = bc.Volume24Hour,
+                        Volume24HourTo = bc.Volume24HourTo,
+                        Volume = bc.Volume,
+                        VolumePeriod = bc.VolumePeriod,
+                        Open = bc.Open,
+                        Close = bc.Close,
+                        High = bc.High,
+                        Low = bc.Low,
 
-            bc.LastUpdate = DateTime.Now;
+                    });
+
+                bc.LastUpdate = DateTime.Now;
+            }
 
             if (updatePrice)
                 bc.Price = _price;
@@ -179,7 +200,11 @@ namespace ZeegZag.Crawler2.Services.Database
                 bc.Low24Hour = _low24;
                 bc.Close24Hour = _close24;
             }
-
+            if (updateHealth)
+            {
+                bc.CanDeposit = _canDeposit;
+                bc.CanWithdraw = _canWithdraw;
+            }
 
         }
         public override string ToString()

@@ -4,8 +4,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using System.Timers;
 using Microsoft.EntityFrameworkCore;
-using ZeegZag.Crawler2.Entity;
 using ZeegZag.Crawler2.Services.Database;
+using ZeegZag.Data.Entity;
 
 namespace ZeegZag.Crawler2.Services.Bittrex
 {
@@ -18,23 +18,26 @@ namespace ZeegZag.Crawler2.Services.Bittrex
         private const string MarketUrl = "https://bittrex.com/api/v2.0/pub/markets/GetMarketSummaries";
         private const string MinutePriceUrl = "https://bittrex.com/Api/v2.0/pub/market/GetLatestTick?marketName={0}-{1}&tickInterval=oneMin";
         private const string DailyPriceUrl = "https://bittrex.com/Api/v2.0/pub/market/GetLatestTick?marketName={0}-{1}&tickInterval=day";
+        private const string OrderUrl = "https://bittrex.com/api/v1.1/public/getorderbook?market={0}-{1}&type=both";
+        private const string HealthUrl = "https://bittrex.com/api/v2.0/pub/currencies/GetWalletHealth";
         
         /// <inheritdoc />
         public override string Name { get; } = "Bittrex";
 
         /// <inheritdoc />
-        public override void Init(zeegzagContext db)
+        public override void Init(admin_zeegzagContext db)
         {
             GetExchangeId(db);
-            RegisterRateLimit(20);
-            AlignSockets(10);
+            RegisterRateLimit(30);
+            AlignSockets(40);
             
             CreatePuller(PULLER_CURRENCY, 60 * 60, 0, OnPullingCurrencies); //pull new currencies every 6 hours            
             CreatePuller(PULLER_MARKETS, 60 * 60, 45, OnPullingMarkets); //pull markets every hour            
             CreatePuller(PULLER_PRICE, 60, 90, OnPullingPrices); //pull prices every minute
+            CreatePuller(PULLER_ORDER, 60, 90, OnPullingOrders); //pull prices every minute
         }
 
-        private async Task OnPullingPrices()
+        private async Task OnPullingPrices(PullerSession session)
         {
             using (var db = DatabaseService.CreateContext())
             {
@@ -50,45 +53,71 @@ namespace ZeegZag.Crawler2.Services.Bittrex
                         To = bc.ToCurrencyName,
                         Price = bc.Price,
                     }).ToList();
-                int i = 0;
 
-                var tasks = new List<Task>(prices.Count);
-                foreach (var bc in prices)
+                var healths = Pull<BittrexResponse<List<BittrexCurrencyHealth>>>(HealthUrl, session);
+
+                ParallelFor(prices, bc =>
                 {
-                    tasks.Add(Task.Factory.StartNew(() =>
+                    var health = healths?.result?.FirstOrDefault(h => h.Currency.Currency == bc.To);
+
+                    //request last minute and daily ticker
+                    var responseMinute =
+                        Pull<BittrexResponse<List<BittrexTicker>>>(string.Format(MinutePriceUrl, bc.From, bc.To), session);
+                    //var responseDaily = Pull<BittrexResponse<BittrexTicker>>(string.Format(DailyPriceUrl, bc.From, bc.To)).Result;
+
+                    if (responseMinute.success && responseMinute.result.Count > 0)
                     {
-                        //request last minute and daily ticker
-                        var responseMinute =
-                            Pull<BittrexResponse<BittrexTicker>>(string.Format(MinutePriceUrl, bc.From, bc.To)).Result;
-                        //var responseDaily = Pull<BittrexResponse<BittrexTicker>>(string.Format(DailyPriceUrl, bc.From, bc.To)).Result;
-                        
-                        if (responseMinute.success && responseMinute.result.Count > 0)
+                        var data = responseMinute.result[0];
+                        //var dataDaily = responseDaily.result[0];
+                        if (data != null /*&& dataDaily != null*/)
                         {
-                            var data = responseMinute.result[0];
-                            //var dataDaily = responseDaily.result[0];
-                            if (data != null /*&& dataDaily != null*/)
-                            {
-                                DatabaseService.Enqueue(
-                                    new PriceUpdaterJob(bc.Id, data.C, data.V, 1, 0, 0)
-                                        .UpdatePriceData(data.O, data.H, data.L, data.C));
-                                        //.UpdatePrice24Data(dataDaily.O, dataDaily.H, dataDaily.L, dataDaily.C));
-                                DatabaseService.Enqueue(new UsdGeneratorJob(ExchangeId, bc.FromId, bc.ToId, bc.Price));
-                            }
+                            var job = new PriceUpdaterJob(bc.Id, data.C, data.V, 1)
+                                .UpdatePriceData(data.O, data.H, data.L, data.C);
+                            if (health != null)
+                                job.UpdateHealth(health.Health.IsActive && health.Health.MinutesSinceBHUpdated <= 30,
+                                    health.Health.IsActive && health.Health.MinutesSinceBHUpdated <= 30);
+                            DatabaseService.Enqueue(job);
+                            //.UpdatePrice24Data(dataDaily.O, dataDaily.H, dataDaily.L, dataDaily.C));
+                            DatabaseService.Enqueue(new UsdGeneratorJob(ExchangeId, bc.FromId, bc.ToId, bc.Price));
                         }
-                        else
-                        {
-                            Console.WriteLine(string.Format("Could not pull {0}-{1} from {2}: {3}",
-                                bc.To, bc.From, Name, responseMinute.message));
-                        }
-                    }));
-                }
-                Task.WaitAll(tasks.ToArray());
+                    }
+                    else
+                    {
+                        Console.WriteLine("Could not pull {0}-{1} from {2}: {3}", bc.To, bc.From, Name, responseMinute.message);
+                    }
+                }).Wait();
+            }
+        }
+        private async Task OnPullingOrders(PullerSession session)
+        {
+            using (var db = DatabaseService.CreateContext())
+            {
+                //get all prices from db
+                var prices = db.BorsaCurrencyT
+                    .Where(bc => bc.BorsaId == ExchangeId && !bc.Disabled && bc.AutoGenerated != true)
+                    .Select(bc => new
+                    {
+                        Id = bc.Id,
+                        FromId = bc.FromCurrencyId,
+                        From = bc.FromCurrencyName,
+                        ToId = bc.ToCurrencyId,
+                        To = bc.ToCurrencyName,
+                        Price = bc.Price,
+                    }).ToList();
+
+                ParallelFor(prices, bc =>
+                {
+                    var responseOrders = Pull<BittrexResponse<BittrexOrders>>(string.Format(OrderUrl, bc.From, bc.To), session);
+                    DatabaseService.Enqueue(new OrderUpdaterJob(bc.Id)
+                        .UpdateBuy(responseOrders.result.buy.Take(10).ToList(), c => c.Rate, c => c.Quantity)
+                        .UpdateSell(responseOrders.result.sell.Take(10).ToList(), c => c.Rate, c => c.Quantity));
+                }).Wait();
             }
         }
 
-        private async Task OnPullingMarkets()
+        private async Task OnPullingMarkets(PullerSession session)
         {
-            var response = Pull<BittrexResponse<BittrexMarketSummary>>(MarketUrl).Result;
+            var response = Pull<BittrexResponse<List<BittrexMarketSummary>>>(MarketUrl, session);
             if (response.success)
             {
                 using (var db = DatabaseService.CreateContext())
@@ -118,9 +147,9 @@ namespace ZeegZag.Crawler2.Services.Bittrex
             }
         }
 
-        private async Task OnPullingCurrencies()
+        private async Task OnPullingCurrencies(PullerSession session)
         {
-            var response = Pull<BittrexResponse<BittrexCurrency>>(CurrencyUrl).Result;
+            var response = Pull<BittrexResponse<List<BittrexCurrency>>>(CurrencyUrl, session);
             if (response.success)
             {
                 foreach (var currency in response.result.Where(r => r.IsActive))
@@ -128,7 +157,7 @@ namespace ZeegZag.Crawler2.Services.Bittrex
                         ExchangeId,
                         currency.Currency,
                         currency.CurrencyLong,
-                        currency.IsActive,                        
+                        null,                        
                         currency.TxFee));
             }
             else

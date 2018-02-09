@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using ZeegZag.Crawler2.Entity;
+using ZeegZag.Data.Entity;
 
 namespace ZeegZag.Crawler2.Services.Database
 {
@@ -15,7 +15,7 @@ namespace ZeegZag.Crawler2.Services.Database
         /// Executes database job
         /// </summary>
         /// <param name="db"></param>
-        void Execute(zeegzagContext db);
+        void Execute(admin_zeegzagContext db);
         
     }
 }

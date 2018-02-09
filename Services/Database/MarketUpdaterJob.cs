@@ -2,7 +2,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
-using ZeegZag.Crawler2.Entity;
+using ZeegZag.Data.Entity;
 
 namespace ZeegZag.Crawler2.Services.Database
 {
@@ -51,7 +51,7 @@ namespace ZeegZag.Crawler2.Services.Database
             disableMode = true;
         }
 
-        public void Execute(zeegzagContext db)
+        public void Execute(admin_zeegzagContext db)
         {
             if (disableMode)
             {

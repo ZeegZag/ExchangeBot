@@ -9,9 +9,9 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
-using ZeegZag.Crawler2.Entity;
 using ZeegZag.Crawler2.Services;
 using ZeegZag.Crawler2.Services.Database;
+using ZeegZag.Data.Entity;
 
 #pragma warning disable CS1591 // Missing XML comment for publicly visible type or member
 namespace ZeegZag.Crawler2
@@ -30,7 +30,7 @@ namespace ZeegZag.Crawler2
         {
             services.AddMvc();
 
-            services.AddDbContext<zeegzagContext>(options =>
+            services.AddDbContext<admin_zeegzagContext>(options =>
                 options.UseMySql(Configuration.GetConnectionString("DefaultConnection")));
         }
 
@@ -38,18 +38,14 @@ namespace ZeegZag.Crawler2
         public void Configure(IApplicationBuilder app, IHostingEnvironment env)
         {
             app.UseMvcWithDefaultRoute();
+            
+            app.UseSocketClient();
 
-
-            app.UseWebSockets(new WebSocketOptions()
-            {
-                KeepAliveInterval = TimeSpan.FromSeconds(120),
-                ReceiveBufferSize = 4 * 1024
-            });
-
-            app.UseSocketServer();
+            
 
             ServiceManager.InitalizeServices(Configuration, 5000);
         }
+        
     }
 }
 

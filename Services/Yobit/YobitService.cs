@@ -4,9 +4,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json.Linq;
-using ZeegZag.Crawler2.Entity;
 using ZeegZag.Crawler2.Services.Database;
 using ZeegZag.Crawler2.Services.Poloniex;
+using ZeegZag.Data.Entity;
 
 namespace ZeegZag.Crawler2.Services.Yobit
 {
@@ -20,7 +20,7 @@ namespace ZeegZag.Crawler2.Services.Yobit
         public override bool IsDisabled { get; } = true;
 
         /// <inheritdoc />
-        public override void Init(zeegzagContext db)
+        public override void Init(admin_zeegzagContext db)
         {
             GetExchangeId(db);
             RegisterRateLimit(6);
@@ -30,7 +30,7 @@ namespace ZeegZag.Crawler2.Services.Yobit
             CreatePuller(PULLER_PRICE, 60, 90, OnPullingPrices); //pull prices every minute
         }
 
-        private async Task OnPullingPrices()
+        private async Task OnPullingPrices(PullerSession session)
         {
             using (var db = DatabaseService.CreateContext())
             {
@@ -52,7 +52,7 @@ namespace ZeegZag.Crawler2.Services.Yobit
                 Parallel.ForEach(prices, bc =>
                 {
 
-                    var response = Pull<JToken>(string.Format(PriceUrl, bc.To.ToLower(), bc.From.ToLower())).Result;
+                    var response = Pull<JToken>(string.Format(PriceUrl, bc.To.ToLower(), bc.From.ToLower()), session);
                     var data = response.Children<JProperty>().First().Value.ToObject<YobitTicker>();
 
                     DatabaseService.Enqueue(new PriceUpdaterJob(bc.Id, data.last).UpdateVolume24(data.vol, data.vol_cur));
@@ -61,9 +61,9 @@ namespace ZeegZag.Crawler2.Services.Yobit
             }
         }
 
-        private async Task OnPullingMarkets()
+        private async Task OnPullingMarkets(PullerSession session)
         {
-            var response = await Pull<YobitResponse>(CurrencyMarketUrl).ConfigureAwait(false);
+            var response = Pull<YobitResponse>(CurrencyMarketUrl, session);
 
             using (var db = DatabaseService.CreateContext())
             {
@@ -90,9 +90,9 @@ namespace ZeegZag.Crawler2.Services.Yobit
             }
         }
 
-        private async Task OnPullingCurrencies()
+        private async Task OnPullingCurrencies(PullerSession session)
         {
-            var response = await Pull<YobitResponse>(CurrencyMarketUrl).ConfigureAwait(false);
+            var response = Pull<YobitResponse>(CurrencyMarketUrl, session);
 
 
             //get coin names

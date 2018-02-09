@@ -1,9 +1,17 @@
 ﻿using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
+using System.Linq;
+using System.Net.Http;
+using System.Text;
+using System.Threading.Tasks;
 using System.Timers;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
-using ZeegZag.Crawler2.Entity;
+using Telegram.Bot.Types.Enums;
+using Telegram.Bot.Types.ReplyMarkups;
+using ZeegZag.Data.Entity;
+using ZeegZag.Data.Models;
 
 namespace ZeegZag.Crawler2.Services.Database
 {
@@ -12,7 +20,8 @@ namespace ZeegZag.Crawler2.Services.Database
     /// </summary>
     public static class DatabaseService
     {
-        private static DbContextOptions<zeegzagContext> _dbOptions;
+        static Queue<BotMessage> MessageQueue = new Queue<BotMessage>();
+        private static DbContextOptions<admin_zeegzagContext> _dbOptions;
         private static Timer _timer;
         private static readonly ConcurrentQueue<IDatabaseJob> JobQueue = new ConcurrentQueue<IDatabaseJob>();
 
@@ -24,7 +33,7 @@ namespace ZeegZag.Crawler2.Services.Database
         public static void Initialize(IConfiguration config, int interval)
         {
             var conString = config.GetConnectionString("DefaultConnection");
-            _dbOptions = new DbContextOptionsBuilder<zeegzagContext>().UseMySql(conString).Options;
+            _dbOptions = new DbContextOptionsBuilder<admin_zeegzagContext>().UseMySql(conString).Options;
 
 
             _timer = new Timer(interval*1000);
@@ -36,9 +45,9 @@ namespace ZeegZag.Crawler2.Services.Database
         /// Creates a new database context
         /// </summary>
         /// <returns></returns>
-        public static zeegzagContext CreateContext()
+        public static admin_zeegzagContext CreateContext()
         {
-            return new zeegzagContext(_dbOptions);
+            return new admin_zeegzagContext(_dbOptions);
         }
 
         /// <summary>
@@ -59,20 +68,26 @@ namespace ZeegZag.Crawler2.Services.Database
                 var  dt= DateTime.Now;
                 using (var db = CreateContext())
                 {
-
                     int i = 0;
                     while (JobQueue.TryDequeue(out var job))
                     {
                         job.Execute(db);
                         i++;
                         //Console.Write("..." + job.ToString());
+                        //if (i % 500 == 0)
+                        //{
+                        //    db.SaveChanges();
+                        //}
                     }
                     UsdGeneratorJob.ClearCache();
+
+
                     if (i > 0)
                     {
                         db.SaveChanges();
-                       // Console.WriteLine(string.Format("Executed {0} jobs in {1}s", i, Math.Round((DateTime.Now - dt).TotalSeconds, 2)));
+                        // Console.WriteLine(string.Format("Executed {0} jobs in {1}s", i, Math.Round((DateTime.Now - dt).TotalSeconds, 2)));
                     }
+                    SendMessagesAsync().Wait();
                 }
 
             }
@@ -81,6 +96,32 @@ namespace ZeegZag.Crawler2.Services.Database
                 Console.WriteLine(exception);
             }
             _timer.Start();
+        }
+        public static void EnqueueBroadcast(long? chatId, string message, IReplyMarkup keyboard = null, ParseMode parseMode = ParseMode.Default)
+        {
+            if (chatId.HasValue)
+                MessageQueue.Enqueue(new BotMessage
+                {
+                    ChatId = chatId.Value,
+                    Message = message,
+                    Markup = keyboard,
+                    ParseMode = parseMode
+                });
+        }
+
+        static async Task SendMessagesAsync()
+        {
+            if (MessageQueue.Count > 0)
+            {
+                var list = MessageQueue.ToArray();
+                MessageQueue.Clear();
+                using (var cl = new HttpClient())
+                {
+                    var r = await cl.PostAsync("http://caster.zeegzag.com/enqueue/alarm",
+                        new StringContent(BotMessage.Serialize(list), Encoding.UTF8, "application/json"));
+
+                }
+            }
         }
     }
 }

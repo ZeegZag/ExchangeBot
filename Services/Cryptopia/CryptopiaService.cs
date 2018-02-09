@@ -4,9 +4,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json.Linq;
-using ZeegZag.Crawler2.Entity;
 using ZeegZag.Crawler2.Services.Binance;
 using ZeegZag.Crawler2.Services.Database;
+using ZeegZag.Data.Entity;
 
 namespace ZeegZag.Crawler2.Services.Cryptopia
 {
@@ -19,7 +19,7 @@ namespace ZeegZag.Crawler2.Services.Cryptopia
         public override bool IsDisabled { get; } = true;
 
         /// <inheritdoc />
-        public override void Init(zeegzagContext db)
+        public override void Init(admin_zeegzagContext db)
         {
             GetExchangeId(db);
             RegisterRateLimit(12);
@@ -29,7 +29,7 @@ namespace ZeegZag.Crawler2.Services.Cryptopia
             CreatePuller(PULLER_PRICE, 60, 90, OnPullingPrices); //pull prices every minute
         }
 
-        private async Task OnPullingPrices()
+        private async Task OnPullingPrices(PullerSession session)
         {
             using (var db = DatabaseService.CreateContext())
             {
@@ -51,7 +51,7 @@ namespace ZeegZag.Crawler2.Services.Cryptopia
                 Parallel.ForEach(prices, bc =>
                 {
                     
-                    var response = Pull<CryptopiaResponse<CryptopiaMarket>>(string.Format(PriceUrl, bc.To, bc.From)).Result;
+                    var response = Pull<CryptopiaResponse<CryptopiaMarket>>(string.Format(PriceUrl, bc.To, bc.From), session);
 
                     var mv = response.Data.Volume;
 
@@ -61,9 +61,9 @@ namespace ZeegZag.Crawler2.Services.Cryptopia
             }
         }
 
-        private async Task OnPullingMarkets()
+        private async Task OnPullingMarkets(PullerSession session)
         {
-            var response = await Pull<CryptopiaResponse<List<CryptopiaMarket>>>(MarketUrl).ConfigureAwait(false);
+            var response = Pull<CryptopiaResponse<List<CryptopiaMarket>>>(MarketUrl, session);
 
             using (var db = DatabaseService.CreateContext())
             {
@@ -88,9 +88,9 @@ namespace ZeegZag.Crawler2.Services.Cryptopia
             }
         }
 
-        private async Task OnPullingCurrencies()
+        private async Task OnPullingCurrencies(PullerSession session)
         {
-            var response = await Pull<CryptopiaResponse<List<CryptopiaMarket>>>(MarketUrl).ConfigureAwait(false);
+            var response = Pull<CryptopiaResponse<List<CryptopiaMarket>>>(MarketUrl, session);
 
             //get coin names
             var coinNames = response.Data.SelectMany(p =>

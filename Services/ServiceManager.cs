@@ -40,13 +40,8 @@ namespace ZeegZag.Crawler2.Services
             Task.Factory.StartNew(() =>
             {
                 Thread.Sleep(delay);
-                while (SocketManager.ChildrenCount < SocketManager.MaxCount)
-                {
-                    Console.WriteLine($"Waiting children to connect... ({SocketManager.ChildrenCount}/{SocketManager.MaxCount})");
-                    Thread.Sleep(10000);
-                }
 
-                DatabaseService.Initialize(config, 20);
+                DatabaseService.Initialize(config, 30);
 
                 using (var db = DatabaseService.CreateContext())
                 {
@@ -54,11 +49,19 @@ namespace ZeegZag.Crawler2.Services
                     {
                         if (!service.IsDisabled)
                         {
-#if DEBUG
-                            if (!Tester.IsServiceTesting(service))
+//#if DEBUG
+//                            if (!Tester.IsServiceTesting(service))
+//                                continue;
+//#endif
+
+                            if (!SocketManager.Borsa.Borsas.ContainsKey(service.Name))
                                 continue;
-#endif
+
                             service.Init(db);
+
+                            var count = SocketManager.Borsa.Borsas[service.Name];
+                            if (count > 0)
+                                SocketManager.AlignForBorsa(service.ExchangeId, SocketManager.Borsa.Borsas[service.Name]);
                             //Thread.Sleep(45000);
                         }
                     }
